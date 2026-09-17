@@ -17,8 +17,8 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
-        run: pip install feedparser requests
+        - name: Install dependencies
+        run: pip install feedparser requests deep-translator
 
       - name: Run news bot
         env:
