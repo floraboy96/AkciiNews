@@ -4,6 +4,7 @@ import os
 import time
 import numpy as np
 import yfinance as yf
+from datetime import datetime
 from deep_translator import MyMemoryTranslator
 
 BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
@@ -55,7 +56,6 @@ def calculate_metrics(ticker, period=14):
 
         close = data['Close']
 
-        # RSI
         delta = close.diff()
         gain = delta.where(delta > 0, 0)
         loss = -delta.where(delta < 0, 0)
@@ -65,14 +65,12 @@ def calculate_metrics(ticker, period=14):
         rsi = 100 - (100 / (1 + rs))
         rsi_value = round(float(rsi.iloc[-1]), 1)
 
-        # Объём
         volume = data['Volume']
         avg_volume = volume.rolling(window=20).mean()
         last_volume = float(volume.iloc[-1])
         avg_volume_value = float(avg_volume.iloc[-1])
         volume_ratio = round(last_volume / avg_volume_value, 2) if avg_volume_value > 0 else None
 
-        # Историческая волатильность (годовая, в %)
         daily_returns = close.pct_change().dropna()
         daily_std = daily_returns.std()
         annual_volatility = round(float(daily_std * np.sqrt(252) * 100), 1)
@@ -81,6 +79,36 @@ def calculate_metrics(ticker, period=14):
     except Exception as e:
         print(f"Data error for {ticker}: {e}")
         return None, None, None
+
+def get_dividend_info(ticker):
+    """Дивідендна дохідність та дата останньої виплати"""
+    try:
+        info = yf.Ticker(ticker).info
+
+        yield_value = info.get("dividendYield")
+        last_div_date_ts = info.get("lastDividendDate")
+
+        if not yield_value:
+            return "⚪ Дивіденди: не виплачуються"
+
+        yield_pct = round(yield_value, 2) if yield_value < 1 else round(yield_value / 100, 2)
+        # yfinance иногда отдаёт уже в процентах, иногда в долях — нормализуем
+        if yield_pct > 50:
+            yield_pct = round(yield_pct / 100, 2)
+
+        result = f"💰 Дивіденди: {yield_pct}% річних"
+
+        if last_div_date_ts:
+            try:
+                date_str = datetime.fromtimestamp(last_div_date_ts).strftime("%d.%m.%Y")
+                result += f" (остання виплата: {date_str})"
+            except Exception:
+                pass
+
+        return result
+    except Exception as e:
+        print(f"Dividend error for {ticker}: {e}")
+        return "⚪ Дивіденди: н/д"
 
 def get_rsi_signal(rsi):
     if rsi is None:
@@ -149,9 +177,10 @@ def main():
         rsi_signal = get_rsi_signal(rsi)
         volume_signal = get_volume_signal(volume_ratio)
         volatility_signal = get_volatility_signal(volatility)
+        dividend_signal = get_dividend_info(ticker)
         news = get_news_for_ticker(ticker)
 
-        block = f"📌 {ticker}\n{rsi_signal}\n{volume_signal}\n{volatility_signal}"
+        block = f"📌 {ticker}\n{rsi_signal}\n{volume_signal}\n{volatility_signal}\n{dividend_signal}"
         if news:
             block += "\n" + "\n".join(news)
         blocks.append(block)
