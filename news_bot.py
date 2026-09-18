@@ -2,6 +2,7 @@ import feedparser
 import requests
 import os
 import time
+import numpy as np
 import yfinance as yf
 from deep_translator import MyMemoryTranslator
 
@@ -28,7 +29,7 @@ def translate(text):
         return text
 
 def get_market_fear():
-    """VIX — 'індекс страху' всього ринку"""
+    """VIX — загальний 'індекс страху' всього ринку"""
     try:
         vix = yf.Ticker("^VIX").history(period="5d", interval="1d")
         if vix.empty:
@@ -45,41 +46,43 @@ def get_market_fear():
         print(f"VIX error: {e}")
         return "⚪ Індекс страху (VIX): н/д"
 
-def calculate_rsi_and_volume(ticker, period=14):
+def calculate_metrics(ticker, period=14):
+    """Повертає RSI, співвідношення обсягу та історичну волатильність"""
     try:
         data = yf.Ticker(ticker).history(period="1mo", interval="1d")
         if data.empty or len(data) < period:
-            return None, None
+            return None, None, None
 
         close = data['Close']
+
+        # RSI
         delta = close.diff()
         gain = delta.where(delta > 0, 0)
         loss = -delta.where(delta < 0, 0)
-
         avg_gain = gain.rolling(window=period).mean()
         avg_loss = loss.rolling(window=period).mean()
-
         rs = avg_gain / avg_loss
         rsi = 100 - (100 / (1 + rs))
         rsi_value = round(float(rsi.iloc[-1]), 1)
 
-        # Объём: сравниваем последний день со средним за 20 дней
+        # Объём
         volume = data['Volume']
         avg_volume = volume.rolling(window=20).mean()
         last_volume = float(volume.iloc[-1])
         avg_volume_value = float(avg_volume.iloc[-1])
+        volume_ratio = round(last_volume / avg_volume_value, 2) if avg_volume_value > 0 else None
 
-        if avg_volume_value > 0:
-            volume_ratio = round(last_volume / avg_volume_value, 2)
-        else:
-            volume_ratio = None
+        # Историческая волатильность (годовая, в %)
+        daily_returns = close.pct_change().dropna()
+        daily_std = daily_returns.std()
+        annual_volatility = round(float(daily_std * np.sqrt(252) * 100), 1)
 
-        return rsi_value, volume_ratio
+        return rsi_value, volume_ratio, annual_volatility
     except Exception as e:
         print(f"Data error for {ticker}: {e}")
-        return None, None
+        return None, None, None
 
-def get_signal(rsi):
+def get_rsi_signal(rsi):
     if rsi is None:
         return "⚪ RSI: н/д"
     if rsi < 30:
@@ -98,6 +101,16 @@ def get_volume_signal(ratio):
         return f"📈 Обсяг: x{ratio} від середнього (підвищений)"
     else:
         return f"⚪ Обсяг: x{ratio} від середнього (звичайний)"
+
+def get_volatility_signal(vol):
+    if vol is None:
+        return "⚪ Волатильність: н/д"
+    if vol < 20:
+        return f"🟢 Волатильність: {vol}% (спокійно)"
+    elif vol < 40:
+        return f"🟡 Волатильність: {vol}% (підвищена нервозність)"
+    else:
+        return f"🔴 Волатильність: {vol}% (висока — ризиковано)"
 
 def get_news_for_ticker(ticker, limit=2):
     try:
@@ -127,18 +140,18 @@ def send_to_telegram(text):
 def main():
     blocks = []
 
-    # Общий индекс страха — добавляем один раз в начало
     fear_block = get_market_fear()
     blocks.append(fear_block)
 
     for ticker in TICKERS:
         print(f"Processing {ticker}...")
-        rsi, volume_ratio = calculate_rsi_and_volume(ticker)
-        rsi_signal = get_signal(rsi)
+        rsi, volume_ratio, volatility = calculate_metrics(ticker)
+        rsi_signal = get_rsi_signal(rsi)
         volume_signal = get_volume_signal(volume_ratio)
+        volatility_signal = get_volatility_signal(volatility)
         news = get_news_for_ticker(ticker)
 
-        block = f"📌 {ticker}\n{rsi_signal}\n{volume_signal}"
+        block = f"📌 {ticker}\n{rsi_signal}\n{volume_signal}\n{volatility_signal}"
         if news:
             block += "\n" + "\n".join(news)
         blocks.append(block)
