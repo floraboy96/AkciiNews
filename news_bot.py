@@ -17,6 +17,12 @@ TICKERS = [
     "NKE", "SONY", "IBKR"
 ]
 
+CRYPTO_TICKERS = [
+    "BTC-USD", "ETH-USD", "BNB-USD", "SOL-USD", "XRP-USD",
+    "ADA-USD", "DOGE-USD", "AVAX-USD", "LINK-USD", "TON-USD",
+    "ZEC-USD", "BCH-USD"
+]
+
 translator = MyMemoryTranslator(source="en-GB", target="uk-UA")
 
 def translate(text):
@@ -30,7 +36,7 @@ def translate(text):
         return text
 
 def get_market_fear():
-    """VIX — загальний 'індекс страху' всього ринку"""
+    """VIX — загальний 'індекс страху' фондового ринку"""
     try:
         vix = yf.Ticker("^VIX").history(period="5d", interval="1d")
         if vix.empty:
@@ -42,7 +48,7 @@ def get_market_fear():
             mood = "🟡 підвищена нервозність"
         else:
             mood = "🔴 паніка / сильний страх"
-        return f"📉 Індекс страху (VIX): {value} — {mood}"
+        return f"📉 Індекс страху акцій (VIX): {value} — {mood}"
     except Exception as e:
         print(f"VIX error: {e}")
         return "⚪ Індекс страху (VIX): н/д"
@@ -92,7 +98,6 @@ def get_dividend_info(ticker):
             return "⚪ Дивіденди: не виплачуються"
 
         yield_pct = round(yield_value, 2) if yield_value < 1 else round(yield_value / 100, 2)
-        # yfinance иногда отдаёт уже в процентах, иногда в долях — нормализуем
         if yield_pct > 50:
             yield_pct = round(yield_pct / 100, 2)
 
@@ -165,27 +170,46 @@ def send_to_telegram(text):
     print(f"Telegram response: {response.status_code} {response.text}")
     return response.json()
 
+def build_stock_block(ticker):
+    print(f"Processing {ticker}...")
+    rsi, volume_ratio, volatility = calculate_metrics(ticker)
+    rsi_signal = get_rsi_signal(rsi)
+    volume_signal = get_volume_signal(volume_ratio)
+    volatility_signal = get_volatility_signal(volatility)
+    dividend_signal = get_dividend_info(ticker)
+    news = get_news_for_ticker(ticker)
+
+    block = f"📌 {ticker}\n{rsi_signal}\n{volume_signal}\n{volatility_signal}\n{dividend_signal}"
+    if news:
+        block += "\n" + "\n".join(news)
+    return block
+
+def build_crypto_block(ticker):
+    print(f"Processing {ticker}...")
+    rsi, volume_ratio, volatility = calculate_metrics(ticker)
+    rsi_signal = get_rsi_signal(rsi)
+    volume_signal = get_volume_signal(volume_ratio)
+    volatility_signal = get_volatility_signal(volatility)
+
+    name = ticker.replace("-USD", "")
+    block = f"🪙 {name}\n{rsi_signal}\n{volume_signal}\n{volatility_signal}"
+    return block
+
 def main():
     blocks = []
 
     fear_block = get_market_fear()
     blocks.append(fear_block)
 
+    blocks.append("━━━━━━━━━━━━━━\n📈 АКЦІЇ США")
     for ticker in TICKERS:
-        print(f"Processing {ticker}...")
-        rsi, volume_ratio, volatility = calculate_metrics(ticker)
-        rsi_signal = get_rsi_signal(rsi)
-        volume_signal = get_volume_signal(volume_ratio)
-        volatility_signal = get_volatility_signal(volatility)
-        dividend_signal = get_dividend_info(ticker)
-        news = get_news_for_ticker(ticker)
+        blocks.append(build_stock_block(ticker))
 
-        block = f"📌 {ticker}\n{rsi_signal}\n{volume_signal}\n{volatility_signal}\n{dividend_signal}"
-        if news:
-            block += "\n" + "\n".join(news)
-        blocks.append(block)
+    blocks.append("━━━━━━━━━━━━━━\n🪙 КРИПТОВАЛЮТИ")
+    for ticker in CRYPTO_TICKERS:
+        blocks.append(build_crypto_block(ticker))
 
-    message = "📊 Аналітика та новини по акціях:\n\n" + "\n\n".join(blocks)
+    message = "📊 Аналітика та новини:\n\n" + "\n\n".join(blocks)
     print(f"Total message length: {len(message)}")
 
     for i in range(0, len(message), 4000):
