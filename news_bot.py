@@ -20,7 +20,8 @@ TICKERS = [
 CRYPTO_TICKERS = [
     "BTC-USD", "ETH-USD", "BNB-USD", "SOL-USD", "XRP-USD",
     "ADA-USD", "DOGE-USD", "AVAX-USD", "LINK-USD", "GRAM-USD",
-    "ZEC-USD", "BCH-USD", "ENA-USD", "NEAR-USD", "ARB-USD", "LTC-USD", "STRK-USD"
+    "ZEC-USD", "BCH-USD", "ENA-USD", "NEAR-USD", "ARB-USD",
+    "LTC-USD", "STRK-USD"
 ]
 
 translator = MyMemoryTranslator(source="en-GB", target="uk-UA")
@@ -40,7 +41,7 @@ def get_market_fear():
     try:
         vix = yf.Ticker("^VIX").history(period="5d", interval="1d")
         if vix.empty:
-            return "⚪ Індекс страху (VIX): н/д"
+            return "⚪ Індекс страху акцій (VIX): н/д"
         value = round(float(vix['Close'].iloc[-1]), 1)
         if value < 20:
             mood = "🟢 спокійний ринок"
@@ -51,7 +52,40 @@ def get_market_fear():
         return f"📉 Індекс страху акцій (VIX): {value} — {mood}"
     except Exception as e:
         print(f"VIX error: {e}")
-        return "⚪ Індекс страху (VIX): н/д"
+        return "⚪ Індекс страху акцій (VIX): н/д"
+
+def get_crypto_fear_greed():
+    """Crypto Fear & Greed Index — спеціальний індекс страху для криптовалют"""
+    try:
+        response = requests.get("https://api.alternative.me/fng/", timeout=10)
+        data = response.json()
+        value = int(data['data'][0]['value'])
+        classification = data['data'][0]['value_classification']
+
+        translations = {
+            "Extreme Fear": "екстремальний страх",
+            "Fear": "страх",
+            "Neutral": "нейтрально",
+            "Greed": "жадібність",
+            "Extreme Greed": "екстремальна жадібність"
+        }
+        mood_uk = translations.get(classification, classification)
+
+        if value < 25:
+            emoji = "🔴"
+        elif value < 45:
+            emoji = "🟠"
+        elif value < 55:
+            emoji = "⚪"
+        elif value < 75:
+            emoji = "🟡"
+        else:
+            emoji = "🟢"
+
+        return f"{emoji} Crypto Fear & Greed Index: {value} ({mood_uk})"
+    except Exception as e:
+        print(f"Fear & Greed error: {e}")
+        return "⚪ Crypto Fear & Greed Index: н/д"
 
 def calculate_metrics(ticker, period=14):
     """Повертає RSI, співвідношення обсягу та історичну волатильність"""
@@ -85,6 +119,20 @@ def calculate_metrics(ticker, period=14):
     except Exception as e:
         print(f"Data error for {ticker}: {e}")
         return None, None, None
+
+def get_24h_change(ticker):
+    """Зміна ціни за останні 24 години"""
+    try:
+        data = yf.Ticker(ticker).history(period="2d", interval="1d")
+        if len(data) < 2:
+            return None
+        prev_close = float(data['Close'].iloc[-2])
+        last_close = float(data['Close'].iloc[-1])
+        change_pct = round((last_close - prev_close) / prev_close * 100, 2)
+        return change_pct
+    except Exception as e:
+        print(f"24h change error for {ticker}: {e}")
+        return None
 
 def get_dividend_info(ticker):
     """Дивідендна дохідність та дата останньої виплати"""
@@ -145,6 +193,12 @@ def get_volatility_signal(vol):
     else:
         return f"🔴 Волатильність: {vol}% (висока — ризиковано)"
 
+def get_change_signal(change_pct):
+    if change_pct is None:
+        return "⚪ 24г: н/д"
+    arrow = "🔼" if change_pct >= 0 else "🔽"
+    return f"{arrow} 24г: {change_pct:+.2f}%"
+
 def get_news_for_ticker(ticker, limit=2):
     try:
         url = f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={ticker}&region=US&lang=en-US"
@@ -157,6 +211,24 @@ def get_news_for_ticker(ticker, limit=2):
         return items
     except Exception as e:
         print(f"News error for {ticker}: {e}")
+        return []
+
+def get_crypto_news(coin_name, limit=1):
+    """Новини по конкретній криптовалюті через CoinDesk RSS"""
+    try:
+        url = "https://www.coindesk.com/arc/outboundfeeds/rss/"
+        feed = feedparser.parse(url)
+        items = []
+        coin_name_lower = coin_name.lower()
+        for entry in feed.entries:
+            if coin_name_lower in entry.title.lower():
+                title_uk = translate(entry.title)
+                items.append(f"{title_uk}\n{entry.link}")
+                if len(items) >= limit:
+                    break
+        return items
+    except Exception as e:
+        print(f"Crypto news error for {coin_name}: {e}")
         return []
 
 def send_to_telegram(text):
@@ -190,9 +262,15 @@ def build_crypto_block(ticker):
     rsi_signal = get_rsi_signal(rsi)
     volume_signal = get_volume_signal(volume_ratio)
     volatility_signal = get_volatility_signal(volatility)
+    change_pct = get_24h_change(ticker)
+    change_signal = get_change_signal(change_pct)
 
     name = ticker.replace("-USD", "")
-    block = f"🪙 {name}\n{rsi_signal}\n{volume_signal}\n{volatility_signal}"
+    news = get_crypto_news(name)
+
+    block = f"🪙 {name}\n{change_signal}\n{rsi_signal}\n{volume_signal}\n{volatility_signal}"
+    if news:
+        block += "\n" + "\n".join(news)
     return block
 
 def main():
@@ -205,7 +283,8 @@ def main():
     for ticker in TICKERS:
         blocks.append(build_stock_block(ticker))
 
-    blocks.append("━━━━━━━━━━━━━━\n🪙 КРИПТОВАЛЮТИ")
+    crypto_fear_block = get_crypto_fear_greed()
+    blocks.append(f"━━━━━━━━━━━━━━\n🪙 КРИПТОВАЛЮТИ\n{crypto_fear_block}")
     for ticker in CRYPTO_TICKERS:
         blocks.append(build_crypto_block(ticker))
 
