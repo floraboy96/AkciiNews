@@ -19,7 +19,7 @@ TICKERS = [
 
 CRYPTO_TICKERS = [
     "BTC-USD", "ETH-USD", "BNB-USD", "SOL-USD", "XRP-USD",
-    "ADA-USD", "DOGE-USD", "AVAX-USD", "LINK-USD", "TON-USD",
+    "ADA-USD", "DOGE-USD", "AVAX-USD", "LINK-USD", "GRAM-USD",
     "ZEC-USD", "BCH-USD"
 ]
 
