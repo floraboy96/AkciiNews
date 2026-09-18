@@ -1,6 +1,7 @@
 import feedparser
 import requests
 import os
+import time
 import yfinance as yf
 from deep_translator import GoogleTranslator
 
@@ -18,18 +19,22 @@ translator = GoogleTranslator(source="en", target="uk")
 
 def translate(text):
     try:
-        return translator.translate(text)
+        result = translator.translate(text)
+        time.sleep(1.2)  # пауза, чтобы не упереться в лимит Google Translate
+        return result
     except Exception as e:
         print(f"Translate error: {e}")
+        time.sleep(1.2)
         return text
 
 def calculate_rsi(ticker, period=14):
     try:
-        data = yf.download(ticker, period="1mo", interval="1d", progress=False)
+        data = yf.Ticker(ticker).history(period="1mo", interval="1d")
         if data.empty or len(data) < period:
             return None
 
-        delta = data['Close'].diff()
+        close = data['Close']
+        delta = close.diff()
         gain = delta.where(delta > 0, 0)
         loss = -delta.where(delta < 0, 0)
 
@@ -39,7 +44,8 @@ def calculate_rsi(ticker, period=14):
         rs = avg_gain / avg_loss
         rsi = 100 - (100 / (1 + rs))
 
-        return round(float(rsi.iloc[-1]), 1)
+        last_value = rsi.iloc[-1]
+        return round(float(last_value), 1)
     except Exception as e:
         print(f"RSI error for {ticker}: {e}")
         return None
