@@ -3,7 +3,7 @@ import requests
 import os
 import time
 import yfinance as yf
-from deep_translator import GoogleTranslator
+from deep_translator import MyMemoryTranslator
 
 BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
@@ -15,7 +15,7 @@ TICKERS = [
     "NKE", "SONY", "IBKR"
 ]
 
-translator = GoogleTranslator(source="en", target="uk")
+translator = MyMemoryTranslator(source="en-GB", target="uk-UA")
 
 def translate(text):
     try:
