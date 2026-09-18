@@ -20,7 +20,7 @@ TICKERS = [
 CRYPTO_TICKERS = [
     "BTC-USD", "ETH-USD", "BNB-USD", "SOL-USD", "XRP-USD",
     "ADA-USD", "DOGE-USD", "AVAX-USD", "LINK-USD", "GRAM-USD",
-    "ZEC-USD", "BCH-USD", "ENA-USD", "NEAR-USD", "UNI-USD", "ARB-USD", "PEPE-USD", "SUI-USD", "LTC-USD", "STRK-USD"
+    "ZEC-USD", "BCH-USD", "ENA-USD", "NEAR-USD", "ARB-USD", "LTC-USD", "STRK-USD"
 ]
 
 translator = MyMemoryTranslator(source="en-GB", target="uk-UA")
